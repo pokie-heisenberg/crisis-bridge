@@ -3,7 +3,7 @@ import { supabase } from "@/utils/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { motion, AnimatePresence } from "framer-motion"
-import { Siren, Flame, Plus, Lock, CheckCircle2, History, User, MapPin, AlertCircle, EyeOff, Shield } from "lucide-react"
+import { Siren, Flame, Plus, Lock, CheckCircle2, History, User, MapPin, AlertCircle, EyeOff, Shield, Mic, MicOff, AlertTriangle } from "lucide-react"
 import EvacuationMap from "@/components/EvacuationMap"
 
 type Step = 'initial' | 'role' | 'category' | 'assessment' | 'reported'
@@ -24,6 +24,40 @@ export default function GuestPage() {
   const [gpsStatus, setGpsStatus] = useState('Awaiting fix...')
   const [metadata, setMetadata] = useState<Record<string, any>>({})
   const [description, setDescription] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const [broadcastAlert, setBroadcastAlert] = useState<string | null>(null)
+
+  // Listen for Admin Broadcasts
+  useEffect(() => {
+    const channel = supabase.channel('public-alerts')
+      .on('broadcast', { event: 'alert' }, (payload) => {
+        setBroadcastAlert(payload.payload.message)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  const toggleSpeechToText = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice reporting is not supported in this browser.");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setDescription((prev) => prev ? `${prev} ${transcript}` : transcript);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognition.start();
+  }
 
   // Silent Mode Logic
   const longPressTimer = useRef<any>(null)
@@ -93,8 +127,8 @@ export default function GuestPage() {
   async function submitFullReport() {
     setLoading(true)
     
-const reportedLocation = useLiveLocation && coords ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : (location || 'Unknown Sector')
-      const { data, error } = await supabase.from('incidents').insert({
+    const reportedLocation = location ? location : (useLiveLocation && coords ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : 'Unknown Sector')
+    const { data, error } = await supabase.from('incidents').insert({
       type: category,
       severity: (category === 'Fire' || metadata.trapped === 'Yes') ? 'CRITICAL' : 'HIGH',
       location: reportedLocation,
@@ -109,7 +143,7 @@ const reportedLocation = useLiveLocation && coords ? `${coords.lat.toFixed(6)}, 
 
     if (error) {
        console.error(error)
-      alert("Transmission failure. Check tactical link.")
+      alert("Transmission failure. Please check connection.")
     } else {
       setIncidentId(data.id)
       setStep('reported')
@@ -129,195 +163,284 @@ const reportedLocation = useLiveLocation && coords ? `${coords.lat.toFixed(6)}, 
     })
     
     if (!error) {
-      alert(status === 'SAFE' ? "STATUS SENT: Marked SAFE. Stay at assembly point." : "SOS RE-TRANSMITTED: Help needed signal sent.")
+      alert(status === 'SAFE' ? "Status updated: You are marked SAFE." : "SOS sent: Responders alerted that you need help.")
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0f1a] text-white flex flex-col items-center justify-center p-6 font-sans">
-      <div className="fixed top-0 left-0 w-full h-1 bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.5)] z-50" />
+    <div className="min-h-screen bg-[#060913] text-white flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+      {/* Premium Background Gradients */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/10 blur-[150px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-600/10 blur-[150px] rounded-full pointer-events-none -z-10" />
+
+      {/* Global Broadcast Overlay */}
+      <AnimatePresence>
+        {broadcastAlert && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 bg-red-950/90 backdrop-blur-xl"
+          >
+            <motion.div 
+               initial={{ scale: 0.8 }}
+               animate={{ scale: 1 }}
+               className="text-center space-y-6"
+            >
+               <AlertTriangle className="h-24 w-24 text-red-500 mx-auto animate-pulse" />
+               <h1 className="text-4xl font-black text-white tracking-widest uppercase text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]">
+                  EMERGENCY ALERT
+               </h1>
+               <p className="text-2xl font-bold text-white max-w-2xl leading-relaxed">
+                  "{broadcastAlert}"
+               </p>
+               <button 
+                  onClick={() => setBroadcastAlert(null)}
+                  className="mt-8 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full font-bold text-white transition-colors"
+               >
+                  Acknowledge
+               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence mode="wait">
         {step === 'initial' && (
-          <motion.div key="initial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center space-y-12">
+          <motion.div key="initial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center space-y-12 relative z-10 w-full max-w-sm">
             <div 
               onMouseDown={startSilentTimer} 
               onMouseUp={cancelSilentTimer}
               onTouchStart={startSilentTimer}
               onTouchEnd={cancelSilentTimer}
-              className="cursor-pointer select-none active:scale-95 transition-transform"
+              className="cursor-pointer select-none active:scale-95 transition-transform flex flex-col items-center"
             >
-              <h1 className="text-5xl font-black tracking-tighter uppercase italic text-red-600 mb-2">CrisisBridge</h1>
-              <p className="text-[10px] font-bold uppercase tracking-[0.5em] opacity-40">Tactical Node v2.5</p>
+              <div className="bg-white/5 p-3 rounded-2xl backdrop-blur-md border border-white/10 mb-4">
+                <Siren className="h-8 w-8 text-red-500" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-white mb-2">CrisisBridge</h1>
+              <p className="text-sm font-medium text-slate-400">Emergency Response Portal</p>
             </div>
 
-            <Button variant="sos" size="xl" onClick={() => setStep('role')}>SOS</Button>
+            <div className="flex justify-center py-8">
+              <button 
+                onClick={() => setStep('role')}
+                className="group relative w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 flex items-center justify-center shadow-[0_0_80px_rgba(239,68,68,0.4)] hover:shadow-[0_0_120px_rgba(239,68,68,0.6)] transition-all duration-300 active:scale-95 border-4 border-red-400/30"
+              >
+                <div className="absolute inset-0 rounded-full animate-ping bg-red-500/20" />
+                <span className="text-5xl font-black text-white tracking-widest drop-shadow-md">SOS</span>
+              </button>
+            </div>
             
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest animate-pulse">
-              Hold logo 4s for Silent Distress
+            <p className="text-xs text-slate-500 font-medium tracking-wide">
+              Tap to request immediate assistance
             </p>
           </motion.div>
         )}
 
         {step === 'role' && (
-          <motion.div key="role" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-4">
-             <div className="flex items-center gap-2 mb-6">
-                <div className="h-1 flex-1 bg-red-600" />
-                <div className="h-1 flex-1 bg-slate-800" />
-                <div className="h-1 flex-1 bg-slate-800" />
+          <motion.div key="role" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-8 z-10">
+             <div className="flex flex-col text-center mb-8">
+                <h2 className="text-3xl font-bold tracking-tight mb-2">Who are you?</h2>
+                <p className="text-slate-400">Select your role so we can send the right help.</p>
              </div>
-             <h2 className="text-2xl font-black uppercase italic tracking-tighter">Identify Your Role</h2>
-             <div className="grid grid-cols-2 gap-3">
+             <div className="grid grid-cols-2 gap-4">
                {[
-                 { id: 'Guest', icon: User, label: 'Guest / Visitor' },
-                 { id: 'Staff', icon: Shield, label: 'Hotel Staff' },
-                 { id: 'Kitchen', icon: Flame, label: 'Kitchen Crew' },
-                 { id: 'Security', icon: Lock, label: 'Security Team' }
+                 { id: 'Guest', icon: User, label: 'Guest', desc: 'Visitor/Resident' },
+                 { id: 'Staff', icon: Shield, label: 'Staff', desc: 'Hotel/Facility' },
+                 { id: 'Kitchen', icon: Flame, label: 'Kitchen', desc: 'Culinary Team' },
+                 { id: 'Security', icon: Lock, label: 'Security', desc: 'Guard/Patrol' }
                ].map((r) => (
-                 <Button 
+                 <button 
                    key={r.id} 
-                   variant="outline" 
-                   className="h-24 flex flex-col gap-2 border-slate-800 bg-slate-900/40 hover:border-red-500/50"
+                   className="flex flex-col items-center justify-center gap-3 p-6 rounded-3xl border border-white/5 bg-white/[0.04] backdrop-blur-md hover:bg-white/[0.08] hover:border-blue-500/30 transition-all duration-300 group"
                    onClick={() => { setRole(r.id as Role); setStep('category'); }}
                  >
-                   <r.icon className="h-6 w-6 text-red-500" />
-                   <span className="text-[10px] font-black uppercase tracking-widest">{r.label}</span>
-                 </Button>
+                   <div className="p-4 rounded-2xl bg-blue-500/10 group-hover:scale-110 transition-transform">
+                     <r.icon className="h-6 w-6 text-blue-400" />
+                   </div>
+                   <div className="text-center">
+                     <span className="block text-base font-semibold text-white">{r.label}</span>
+                     <span className="block text-xs text-slate-400 mt-1">{r.desc}</span>
+                   </div>
+                 </button>
                ))}
              </div>
+             <button onClick={() => setStep('initial')} className="w-full text-center text-sm text-slate-400 hover:text-white transition-colors mt-8">Cancel</button>
           </motion.div>
         )}
 
         {step === 'category' && (
-          <motion.div key="cat" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-4">
-            <div className="flex items-center gap-2 mb-6">
-                <div className="h-1 flex-1 bg-red-600" />
-                <div className="h-1 flex-1 bg-red-600" />
-                <div className="h-1 flex-1 bg-slate-800" />
+          <motion.div key="cat" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-6 z-10">
+            <div className="flex flex-col text-center mb-6">
+                <h2 className="text-3xl font-bold tracking-tight mb-2">What's the emergency?</h2>
+                <p className="text-slate-400">Select the category that fits best.</p>
              </div>
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter">Select Emergency</h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {[
-                { id: 'Fire', icon: Flame, color: 'text-orange-500', desc: 'Smoke, visible fire, explosion' },
-                { id: 'Medical', icon: Plus, color: 'text-emerald-500', desc: 'Injury, unconsciousness, cardiac' },
-                { id: 'Security', icon: Lock, color: 'text-blue-500', desc: 'Hostile guest, theft, violence' },
-                { id: 'Silent', icon: EyeOff, color: 'text-slate-400', desc: 'Discreet help (Hidden mode)' }
+                { id: 'Fire', icon: Flame, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'hover:border-orange-500/40', desc: 'Smoke, visible fire, explosion' },
+                { id: 'Medical', icon: Plus, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'hover:border-emerald-500/40', desc: 'Injury, unconsciousness, cardiac' },
+                { id: 'Security', icon: Lock, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'hover:border-blue-500/40', desc: 'Hostile guest, theft, violence' },
+                { id: 'Silent', icon: EyeOff, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'hover:border-purple-500/40', desc: 'Discreet help (Hidden mode)' }
               ].map((c) => (
-                <Button 
+                <button 
                   key={c.id} 
-                  variant="outline" 
-                  className="w-full h-20 justify-start gap-4 border-slate-800 bg-slate-900/40 hover:border-red-500/50"
+                  className={`w-full flex items-center p-4 rounded-2xl border border-white/5 bg-white/[0.04] backdrop-blur-md transition-all duration-300 group ${c.border}`}
                   onClick={() => { setCategory(c.id as Category); setStep('assessment'); }}
                 >
-                  <c.icon className={`h-8 w-8 ${c.color}`} />
-                  <div className="text-left">
-                    <div className="text-sm font-black uppercase italic leading-none">{c.id}</div>
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-widest">{c.desc}</div>
+                  <div className={`p-4 rounded-xl ${c.bg} mr-4 group-hover:scale-105 transition-transform`}>
+                    <c.icon className={`h-6 w-6 ${c.color}`} />
                   </div>
-                </Button>
+                  <div className="text-left">
+                    <div className="text-lg font-bold text-white">{c.id}</div>
+                    <div className="text-xs text-slate-400 mt-1">{c.desc}</div>
+                  </div>
+                </button>
               ))}
             </div>
+            <button onClick={() => setStep('role')} className="w-full text-center text-sm text-slate-400 hover:text-white transition-colors mt-4">Back</button>
           </motion.div>
         )}
 
         {step === 'assessment' && (
-          <motion.div key="assess" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-6">
-             <div className="flex items-center gap-2 mb-6">
-                <div className="h-1 flex-1 bg-red-600" />
-                <div className="h-1 flex-1 bg-red-600" />
-                <div className="h-1 flex-1 bg-red-600" />
+          <motion.div key="assess" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-6 z-10">
+             <div className="flex flex-col text-center mb-4">
+                <h2 className="text-2xl font-bold tracking-tight mb-2">Final Details</h2>
+                <p className="text-slate-400 text-sm">Help us locate and assist you faster.</p>
              </div>
-             <Card className="bg-slate-950 border-slate-800">
-               <CardHeader className="pb-4">
-                 <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertCircle className="text-red-500" /> Assessment
-                 </CardTitle>
-               </CardHeader>
-               <CardContent className="space-y-6">
-                  {category === 'Fire' && (
-                    <>
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Smoke Density</label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {['Low', 'Medium', 'High'].map(v => (
-                            <Button key={v} variant={metadata.smoke === v ? 'default' : 'outline'} className="text-[10px]" onClick={() => setMetadata({...metadata, smoke: v})}>{v}</Button>
-                          ))}
-                        </div>
+
+             <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-3xl p-6 space-y-6 shadow-2xl">
+                {category === 'Fire' && (
+                  <>
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-slate-300">Smoke Density</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['Low', 'Medium', 'High'].map(v => (
+                          <button 
+                            key={v} 
+                            className={`py-2 rounded-xl text-sm font-medium transition-colors ${metadata.smoke === v ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`} 
+                            onClick={() => setMetadata({...metadata, smoke: v})}
+                          >
+                            {v}
+                          </button>
+                        ))}
                       </div>
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">People Trapped?</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {['Yes', 'No', 'Unsure'].map(v => (
-                            <Button key={v} variant={metadata.trapped === v ? 'default' : 'outline'} className="text-[10px]" onClick={() => setMetadata({...metadata, trapped: v})}>{v}</Button>
-                          ))}
-                        </div>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-slate-300">Are people trapped?</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Yes', 'No'].map(v => (
+                          <button 
+                            key={v} 
+                            className={`py-2 rounded-xl text-sm font-medium transition-colors ${metadata.trapped === v ? 'bg-orange-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`} 
+                            onClick={() => setMetadata({...metadata, trapped: v})}
+                          >
+                            {v}
+                          </button>
+                        ))}
                       </div>
-                    </>
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-3">
+                   <div className="flex items-center justify-between">
+                     <label className="text-sm font-semibold text-slate-300">Location Details</label>
+                     <button 
+                       onClick={() => setUseLiveLocation(!useLiveLocation)}
+                       className={`text-xs px-2 py-1 rounded-md transition-colors ${useLiveLocation ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'}`}
+                     >
+                       {useLiveLocation ? 'GPS Active' : 'Use GPS'}
+                     </button>
+                   </div>
+                   <div className="relative">
+                      <MapPin className="absolute left-3 top-3 h-5 w-5 text-blue-400" />
+                      <input 
+                        placeholder="Room #, Floor, or Area..." 
+                        className="w-full bg-black/20 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder:text-slate-500"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                      />
+                   </div>
+                   <p className="text-xs font-medium text-emerald-400 flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {gpsStatus}{coords ? ` (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : ''}
+                   </p>
+                </div>
+
+                <div className="space-y-3">
+                   <div className="flex items-center justify-between">
+                     <label className="text-sm font-semibold text-slate-300">Additional Info (Optional)</label>
+                     <button 
+                       onClick={toggleSpeechToText}
+                       className={`text-xs px-2 py-1 rounded-md transition-colors flex items-center gap-1 ${isListening ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'}`}
+                     >
+                       {isListening ? <><Mic className="h-3 w-3" /> Listening...</> : <><MicOff className="h-3 w-3" /> Tap to Speak</>}
+                     </button>
+                   </div>
+                   <textarea 
+                      className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none min-h-[80px] resize-none transition-all placeholder:text-slate-500"
+                      placeholder="Any specific details..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                   />
+                </div>
+
+                <button 
+                  className="w-full h-14 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all flex items-center justify-center gap-2" 
+                  onClick={submitFullReport} 
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>Dispatch Help <Siren className="w-5 h-5" /></>
                   )}
-
-                  <div className="space-y-3">
-                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Exact Location</label>
-                     <div className="relative">
-                        <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-                        <input 
-                          placeholder="Room #, Floor, or Area..." 
-                          className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-red-500 outline-none"
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
-                        />
-                     </div>
-                     <p className="text-sm sm:text-base md:text-lg font-black font-mono text-emerald-400 uppercase tracking-[0.35em]">
-                        {gpsStatus}{coords ? `: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : ''}
-                     </p>
-                  </div>
-
-                  <div className="space-y-3">
-                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Quick Description</label>
-                     <textarea 
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-4 text-sm focus:ring-1 focus:ring-red-500 outline-none min-h-[100px]"
-                        placeholder="Additional details..."
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                     />
-                  </div>
-
-                  <Button className="w-full h-12 bg-red-600 hover:bg-red-700 font-black tracking-widest uppercase italic" onClick={submitFullReport} disabled={loading}>
-                    {loading ? 'Transmitting...' : 'Dispatch Emergency'}
-                  </Button>
-               </CardContent>
-             </Card>
+                </button>
+             </div>
+             <button onClick={() => setStep('category')} className="w-full text-center text-sm text-slate-400 hover:text-white transition-colors">Back</button>
           </motion.div>
         )}
 
         {step === 'reported' && (
-          <motion.div key="done" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center space-y-6">
-             <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(16,185,129,0.3)]">
-                <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+          <motion.div key="done" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center space-y-6 w-full max-w-md z-10">
+             <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="h-12 w-12 text-emerald-400" />
              </div>
-             <EvacuationMap zone={location} />
+             
+             <div>
+               <h2 className="text-2xl font-bold mb-2">Help is on the way</h2>
+               <p className="text-slate-400 text-sm">Responders have been alerted. Stay calm and follow evacuation protocols if necessary.</p>
+             </div>
 
-             <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/60 max-w-sm mx-auto space-y-4">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Status Check-in</p>
+             <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+                <EvacuationMap zone={location} />
+             </div>
+
+             <div className="p-6 rounded-3xl border border-white/5 bg-white/[0.04] backdrop-blur-md space-y-4 text-left">
+                <p className="text-sm font-semibold text-white">Provide a status update</p>
                 <div className="grid grid-cols-2 gap-3">
-                   <Button 
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] tracking-widest uppercase italic h-12"
+                   <button 
+                      className="bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-sm rounded-xl py-3 transition-colors"
                       onClick={() => updateStatus('SAFE')}
                    >
-                      I AM SAFE
-                   </Button>
-                   <Button 
-                      variant="outline"
-                      className="border-red-600/30 text-red-500 font-black text-[10px] tracking-widest uppercase italic h-12"
+                      I am Safe
+                   </button>
+                   <button 
+                      className="bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 font-semibold text-sm rounded-xl py-3 transition-colors"
                       onClick={() => updateStatus('NEED_HELP')}
                    >
-                      STILL AT RISK
-                   </Button>
+                      I Need Help
+                   </button>
                 </div>
              </div>
 
-             <Button variant="ghost" onClick={() => { setStep('initial'); setMetadata({}); setDescription(''); setLocation(''); }} className="text-slate-500 uppercase font-black text-[10px] tracking-widest">
-                <History className="h-4 w-4 mr-2" /> Return to Terminal
-             </Button>
+             <button 
+               onClick={() => { setStep('initial'); setMetadata({}); setDescription(''); setLocation(''); }} 
+               className="flex items-center justify-center gap-2 mx-auto text-slate-400 hover:text-white transition-colors text-sm font-medium mt-8"
+             >
+                <History className="h-4 w-4" /> Start New Report
+             </button>
           </motion.div>
         )}
       </AnimatePresence>

@@ -131,3 +131,26 @@ Return ONLY JSON.
     }
   }
 }
+
+export async function translateDescription(text: string): Promise<string> {
+  const prompt = `
+Translate the following emergency incident description to English. 
+Return ONLY the English translation. No preamble, no quotes, no markdown.
+If it is already in English, return it exactly as is.
+
+Text to translate:
+${text}
+`;
+
+  try {
+    const response = await genai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { temperature: 0.1 }
+    })
+    return response.text?.trim() || text;
+  } catch (err) {
+    console.error('Translation failed:', err)
+    return text;
+  }
+}
