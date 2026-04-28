@@ -1,3 +1,4 @@
+import type { Incident } from '@/hooks/useIncidents';
 import { GoogleGenAI } from '@google/genai';
 import type { Incident } from "@/hooks/useIncidents";
 

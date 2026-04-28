@@ -25,11 +25,69 @@ export default function GuestPage() {
   const [isListening, setIsListening] = useState(false)
   const [broadcastAlert, setBroadcastAlert] = useState<string | null>(null)
 
+  // Siren Audio Setup
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const oscRef = useRef<OscillatorNode | null>(null)
+  const lfoRef = useRef<OscillatorNode | null>(null)
+
+  const startSiren = () => {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContextClass();
+    }
+    const ctx = audioCtxRef.current;
+    
+    if (ctx.state === 'suspended') ctx.resume();
+
+    stopSiren(); // ensure no duplicates
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    // Classic dual-tone European style siren or wailing
+    osc.type = 'square';
+    osc.frequency.value = 700;
+
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 1; // 1 sweep per sec
+
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 300; // Sweeps between 400 and 1000 Hz
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    gain.gain.value = 0.3; // keep volume reasonable
+
+    osc.start();
+    lfo.start();
+    
+    oscRef.current = osc;
+    lfoRef.current = lfo;
+  };
+
+  const stopSiren = () => {
+    if (oscRef.current) {
+      try { oscRef.current.stop() } catch (e) {}
+      oscRef.current = null;
+    }
+    if (lfoRef.current) {
+      try { lfoRef.current.stop() } catch (e) {}
+      lfoRef.current = null;
+    }
+  };
+
   // Listen for Admin Broadcasts
   useEffect(() => {
     const channel = supabase.channel('public-alerts')
       .on('broadcast', { event: 'alert' }, (payload) => {
         setBroadcastAlert(payload.payload.message)
+        startSiren()
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -193,7 +251,10 @@ export default function GuestPage() {
                   "{broadcastAlert}"
                </p>
                <button 
-                  onClick={() => setBroadcastAlert(null)}
+                  onClick={() => {
+                    setBroadcastAlert(null)
+                    stopSiren()
+                  }}
                   className="mt-8 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full font-bold text-white transition-colors"
                >
                   Acknowledge
