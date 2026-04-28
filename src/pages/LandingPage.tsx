@@ -9,7 +9,7 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-red-600/5 blur-[120px] -z-10" />
-        
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -18,17 +18,17 @@ export default function LandingPage() {
           <Zap className="h-3 w-3" /> Next-Gen Emergency Ops
         </motion.div>
 
-        <motion.h1 
+        <motion.h1
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="text-5xl md:text-8xl font-black tracking-tighter uppercase italic leading-[0.9] text-white mb-8"
         >
-          Accelerated <span className="text-red-600">Crisis</span> <br /> 
+          Accelerated <span className="text-red-600">Crisis</span> <br />
           Coordination
         </motion.h1>
 
-        <motion.p 
+        <motion.p
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -38,7 +38,7 @@ export default function LandingPage() {
           Uniting guests, staff, and responders through a unified tactical link.
         </motion.p>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -64,7 +64,7 @@ export default function LandingPage() {
           { icon: ShieldCheck, title: "AI Triage", desc: "Automated intensity scoring and emergency SOP generation via Gemini." },
           { icon: Zap, title: "Zero Latency", desc: "Powered by Supabase Realtime for sub-second incident reporting & status." }
         ].map((feat, i) => (
-          <motion.div 
+          <motion.div
             key={i}
             whileHover={{ y: -10 }}
             className="p-8 rounded-2xl border border-slate-800 bg-slate-900/20 backdrop-blur-md group hover:border-red-600/30 transition-all duration-500"

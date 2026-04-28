@@ -67,7 +67,9 @@ export default function TacticalMap({ incidents }: { incidents: Incident[] }) {
   // Find the most recent active incident to center on, else default
   const activeIncidents = incidents.filter(i => i.status !== 'RESOLVED');
   const latestCenter = activeIncidents.length > 0 
-    ? getPseudoCoordsFromLocation(activeIncidents[0].location)
+    ? (activeIncidents[0].latitude && activeIncidents[0].longitude 
+        ? [activeIncidents[0].latitude, activeIncidents[0].longitude] as [number, number]
+        : getPseudoCoordsFromLocation(activeIncidents[0].location))
     : center;
 
   return (
@@ -85,7 +87,9 @@ export default function TacticalMap({ incidents }: { incidents: Incident[] }) {
         <MapController center={latestCenter} />
         
         {activeIncidents.map((incident) => {
-          const coords = getPseudoCoordsFromLocation(incident.location);
+          const coords = incident.latitude && incident.longitude 
+            ? [incident.latitude, incident.longitude] as [number, number]
+            : getPseudoCoordsFromLocation(incident.location);
           return (
             <Marker 
                 key={incident.id} 
